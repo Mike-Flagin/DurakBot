@@ -9,14 +9,12 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
-
+import java.util.*;
 
 public class DurakBot extends TelegramLongPollingBot {
-    private String GamesPath = "D://misha//Telegram//DurakBot//DurakBotDatabase";
+    private final String DatabasePath = "D://misha//Telegram//DurakBot//DurakBotDatabase";
+    private final String UsersPath = DatabasePath + "//Users";
+    private final String UsersQueue = DatabasePath + "//Queue";
 
     @Override
     public void onUpdateReceived(Update update) {
@@ -27,7 +25,7 @@ public class DurakBot extends TelegramLongPollingBot {
                     filename += update.getCallbackQuery().getMessage().getText().charAt(i);
                 }
                 try {
-                    DeleteUser(GamesPath + "//Game_" + filename, "@" + update.getCallbackQuery().getFrom().getUserName());
+                    DeleteUser(UsersQueue, "@" + update.getCallbackQuery().getFrom().getUserName());
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -40,10 +38,7 @@ public class DurakBot extends TelegramLongPollingBot {
 
     private void DeleteUser(String filename, String user) throws Exception {
         JSONObject users = (JSONObject) readJson(filename);
-        for (int i = 1; i <= users.size(); ++i){
-            if((users.get("Username" + i)).toString().equals(user)) users.remove("Username" + i);
-            break;
-        }
+        users.remove(user);
         FileWriter writer = new FileWriter(filename);
         writer.write(users.toString());
         writer.flush();
@@ -63,13 +58,13 @@ public class DurakBot extends TelegramLongPollingBot {
             }
             JSONObject json = new JSONObject();
             try {
-                json = (JSONObject) readJson(GamesPath + "//Users");
+                json = (JSONObject) readJson(UsersPath);
                 json.put("@" + msg.getFrom().getUserName(), msg.getChatId());
             } catch (Exception e) {
                 e.printStackTrace();
             }
 
-            File file = new File(GamesPath + "//Users");
+            File file = new File(UsersPath);
             try {
                 FileWriter writer = new FileWriter(file);
                 writer.write(json.toString());
@@ -90,28 +85,28 @@ public class DurakBot extends TelegramLongPollingBot {
             }
         }
         if (msg.getText().substring(0, 1).equals("@")) {
+            String GameID = UUID.randomUUID().toString();
             JSONObject json = new JSONObject();
             String tempUsername = "";
-            for (int i = 0, userCounter = 0; i < msg.getText().length() + 1; ++i) {
+            for (int i = 0; i < msg.getText().length() + 1; ++i) {
                 if (msg.getText().length() == i) {
-                    json.put("Username" + (++userCounter), tempUsername);
+                    json.put(tempUsername, GameID);
                     break;
                 }
                 if(msg.getText().substring(i, i + 1).equals(" ")) {
-                    json.put("Username" + (++userCounter), tempUsername);
+                    json.put(tempUsername, GameID);
                     tempUsername = "";
                 }
                 else tempUsername += msg.getText().substring(i, i + 1);
             }
 
-            File file = new File(GamesPath + "//Game_" + msg.getFrom().getUserName());
+            File file = new File(UsersQueue);
             try {
-                if(file.createNewFile()) {
-                    FileWriter writer = new FileWriter(file);
-                    writer.write(json.toString());
-                    writer.flush();
-                    writer.close();
-                }
+                file.createNewFile();
+                FileWriter writer = new FileWriter(file);
+                writer.write(json.toString());
+                writer.flush();
+                writer.close();
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -125,8 +120,9 @@ public class DurakBot extends TelegramLongPollingBot {
     }
 
     private void SendInvitation(JSONObject users, String FromUserName) throws Exception {
-        for (int i = 1; i <= users.size(); ++i){
-            if((users.get("Username" + i)).toString().equals(FromUserName)) continue;
+        Object[] usersArray = users.keySet().toArray();
+        for(int i = 0; i < usersArray.length; ++i) {
+            if(usersArray[i].equals(FromUserName)) continue;
             SendMessage message = new SendMessage();
             InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
             List<InlineKeyboardButton> buttons = new ArrayList<>();
@@ -134,7 +130,7 @@ public class DurakBot extends TelegramLongPollingBot {
             buttons.add(new InlineKeyboardButton().setText("Нет").setCallbackData("Deny"));
             keyboard.setKeyboard(Collections.singletonList(buttons));
             message.setText("Пользователь " + FromUserName + " приглашает вас играть в дурака");
-            message.setChatId(((JSONObject) readJson(GamesPath + "//Users")).get(users.get("Username" + i)).toString());
+            message.setChatId(((JSONObject) readJson(UsersPath)).get(usersArray[i]).toString());
             message.setReplyMarkup(keyboard);
             try {
                 execute(message);
