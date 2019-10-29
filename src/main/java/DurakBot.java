@@ -1,7 +1,9 @@
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
+import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
@@ -19,30 +21,77 @@ public class DurakBot extends TelegramLongPollingBot {
     @Override
     public void onUpdateReceived(Update update) {
         if(update.hasCallbackQuery()) {
-            if(update.getCallbackQuery().getData().equals("Deny")) {
-                String filename = "";
-                for(int i = update.getCallbackQuery().getMessage().getText().indexOf("@") + 1; (update.getCallbackQuery().getMessage().getText().charAt(i)) != ' '; ++i) {
-                    filename += update.getCallbackQuery().getMessage().getText().charAt(i);
-                }
-                try {
-                    DeleteUser(UsersQueue, "@" + update.getCallbackQuery().getFrom().getUserName());
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
+            AnsCallback(update.getCallbackQuery());
         } else if (update.hasMessage()) {
             Message msg = update.getMessage();
             ReplyToMessage(msg);
         }
     }
 
-    private void DeleteUser(String filename, String user) throws Exception {
-        JSONObject users = (JSONObject) readJson(filename);
+    private void AnsCallback(CallbackQuery callbackQuery) {
+        if(callbackQuery.getData().equals("Deny")) {
+            String filename = "";
+            for(int i = callbackQuery.getMessage().getText().indexOf("@") + 1; callbackQuery.getMessage().getText().charAt(i) != ' '; ++i) {
+                filename += callbackQuery.getMessage().getText().charAt(i);
+            }
+            try {
+                String gameId = DeleteUser(UsersQueue, "@" + callbackQuery.getFrom().getUserName());
+                JSONObject users = readJson(UsersQueue);
+                Object[] a = users.entrySet().toArray();
+                SendMessage msg = new SendMessage();
+                msg.setChatId(getUserChatId("@" + callbackQuery.getFrom().getUserName()));
+                msg.setText("Вы отказались от игры");
+                execute(msg);
+                for(int i = 0; i < a.length && users.containsValue(gameId); ++i) {
+                    if(a[i].toString().substring(a[i].toString().indexOf('=') + 1).equals(gameId)) {
+                        msg.setChatId(getUserChatId(a[i].toString().substring(0, a[i].toString().indexOf('='))));
+                        msg.setText("Пользователь @" + callbackQuery.getFrom().getUserName() + " отказался от игры");
+                        execute(msg);
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        } else if(callbackQuery.getData().equals("Accept")) {
+            try {
+                String gameId = getGameIdByUsername("@" + callbackQuery.getFrom().getUserName());
+                JSONObject users = readJson(UsersQueue);
+                Object[] a = users.entrySet().toArray();
+                SendMessage msg = new SendMessage();
+                for(int i = 0; i < a.length && users.containsValue(gameId); ++i) {
+                    if(a[i].toString().substring(a[i].toString().indexOf('=') + 1).equals(gameId)) {
+                        msg.setChatId(getUserChatId(a[i].toString().substring(0, a[i].toString().indexOf('='))));
+                        if((a[i].toString().substring(0, a[i].toString().indexOf('='))).equals("@" + callbackQuery.getFrom().getUserName())) {
+                            msg.setText("Вы согласились на игру");
+                        } else {
+                            msg.setText("Пользователь @" + callbackQuery.getFrom().getUserName() + " согласился на игру");
+                        }
+                        execute(msg);
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private String getGameIdByUsername(String username) throws Exception {
+        return readJson(UsersQueue).get(username).toString();
+    }
+
+    private String getUserChatId(String username) throws Exception {
+        return readJson(UsersPath).get(username).toString();
+    }
+
+    private String DeleteUser(String filename, String user) throws Exception {
+        JSONObject users = readJson(filename);
+        String id = (String) users.get(user);
         users.remove(user);
         FileWriter writer = new FileWriter(filename);
         writer.write(users.toString());
         writer.flush();
         writer.close();
+        return id;
     }
 
     private void ReplyToMessage(Message msg) {
@@ -58,7 +107,7 @@ public class DurakBot extends TelegramLongPollingBot {
             }
             JSONObject json = new JSONObject();
             try {
-                json = (JSONObject) readJson(UsersPath);
+                json = readJson(UsersPath);
                 json.put("@" + msg.getFrom().getUserName(), msg.getChatId());
             } catch (Exception e) {
                 e.printStackTrace();
@@ -99,10 +148,10 @@ public class DurakBot extends TelegramLongPollingBot {
                 }
                 else tempUsername += msg.getText().substring(i, i + 1);
             }
+            json.put("@" + msg.getFrom().getUserName(), GameID);
 
             File file = new File(UsersQueue);
             try {
-                file.createNewFile();
                 FileWriter writer = new FileWriter(file);
                 writer.write(json.toString());
                 writer.flush();
@@ -130,7 +179,7 @@ public class DurakBot extends TelegramLongPollingBot {
             buttons.add(new InlineKeyboardButton().setText("Нет").setCallbackData("Deny"));
             keyboard.setKeyboard(Collections.singletonList(buttons));
             message.setText("Пользователь " + FromUserName + " приглашает вас играть в дурака");
-            message.setChatId(((JSONObject) readJson(UsersPath)).get(usersArray[i]).toString());
+            message.setChatId(getUserChatId((String) usersArray[i]));
             message.setReplyMarkup(keyboard);
             try {
                 execute(message);
@@ -150,9 +199,9 @@ public class DurakBot extends TelegramLongPollingBot {
             return "833939584:AAGB0ddidM-zbMWTeqnRUvr-puQ9W0P1Zrc";
     }
 
-    private static Object readJson(String filename) throws Exception {
+    private static JSONObject readJson(String filename) throws Exception {
         FileReader reader = new FileReader(filename);
         JSONParser jsonParser = new JSONParser();
-        return jsonParser.parse(reader);
+        return (JSONObject) jsonParser.parse(reader);
     }
 }
