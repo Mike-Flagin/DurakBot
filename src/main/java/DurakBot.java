@@ -9,11 +9,11 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.io.*;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
+
+
 
 public class DurakBot extends TelegramLongPollingBot {
     private String GamesPath = "D://misha//Telegram//DurakBot//DurakBotDatabase";
@@ -21,11 +21,33 @@ public class DurakBot extends TelegramLongPollingBot {
     @Override
     public void onUpdateReceived(Update update) {
         if(update.hasCallbackQuery()) {
-            //TODO
+            if(update.getCallbackQuery().getData().equals("Deny")) {
+                String filename = "";
+                for(int i = update.getCallbackQuery().getMessage().getText().indexOf("@") + 1; (update.getCallbackQuery().getMessage().getText().charAt(i)) != ' '; ++i) {
+                    filename += update.getCallbackQuery().getMessage().getText().charAt(i);
+                }
+                try {
+                    DeleteUser(GamesPath + "//Game_" + filename, "@" + update.getCallbackQuery().getFrom().getUserName());
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
         } else if (update.hasMessage()) {
             Message msg = update.getMessage();
             ReplyToMessage(msg);
         }
+    }
+
+    private void DeleteUser(String filename, String user) throws Exception {
+        JSONObject users = (JSONObject) readJson(filename);
+        for (int i = 1; i <= users.size(); ++i){
+            if((users.get("Username" + i)).toString().equals(user)) users.remove("Username" + i);
+            break;
+        }
+        FileWriter writer = new FileWriter(filename);
+        writer.write(users.toString());
+        writer.flush();
+        writer.close();
     }
 
     private void ReplyToMessage(Message msg) {
@@ -82,7 +104,7 @@ public class DurakBot extends TelegramLongPollingBot {
                 else tempUsername += msg.getText().substring(i, i + 1);
             }
 
-            File file = new File(GamesPath + "//Game_" + getDate());
+            File file = new File(GamesPath + "//Game_" + msg.getFrom().getUserName());
             try {
                 if(file.createNewFile()) {
                     FileWriter writer = new FileWriter(file);
@@ -95,23 +117,24 @@ public class DurakBot extends TelegramLongPollingBot {
             }
 
             try {
-                SendInvitation(json, msg.getFrom().getUserName());
+                SendInvitation(json, "@" + msg.getFrom().getUserName());
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
     }
 
-    private void SendInvitation(JSONObject json, String userName) throws Exception {
-        for (int i = 1; i <= json.size(); ++i){
+    private void SendInvitation(JSONObject users, String FromUserName) throws Exception {
+        for (int i = 1; i <= users.size(); ++i){
+            if((users.get("Username" + i)).toString().equals(FromUserName)) continue;
             SendMessage message = new SendMessage();
             InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
             List<InlineKeyboardButton> buttons = new ArrayList<>();
             buttons.add(new InlineKeyboardButton().setText("Да").setCallbackData("Accept"));
             buttons.add(new InlineKeyboardButton().setText("Нет").setCallbackData("Deny"));
             keyboard.setKeyboard(Collections.singletonList(buttons));
-            message.setText("Пользователь " + userName + " приглашает вас играть в дурака");
-            message.setChatId(((JSONObject) readJson(GamesPath + "//Users")).get(json.get("Username" + i)).toString());
+            message.setText("Пользователь " + FromUserName + " приглашает вас играть в дурака");
+            message.setChatId(((JSONObject) readJson(GamesPath + "//Users")).get(users.get("Username" + i)).toString());
             message.setReplyMarkup(keyboard);
             try {
                 execute(message);
@@ -119,12 +142,6 @@ public class DurakBot extends TelegramLongPollingBot {
                 e.printStackTrace();
             }
         }
-    }
-
-    private String getDate() {
-        Date date = new Date();
-        SimpleDateFormat formatForDateNow = new SimpleDateFormat("yyyy_MM_dd_hh_mm_ss");
-        return formatForDateNow.format(date);
     }
 
     @Override
