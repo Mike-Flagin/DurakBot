@@ -11,6 +11,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.io.*;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 
 public class DurakBot extends TelegramLongPollingBot {
@@ -134,21 +135,40 @@ public class DurakBot extends TelegramLongPollingBot {
             }
         }
         if (msg.getText().substring(0, 1).equals("@")) {
-            String GameID = UUID.randomUUID().toString();
+            String GameID = "";
             JSONObject json = new JSONObject();
+            try {
+                json = readJson(UsersQueue);
+            } catch (Exception e) {
+                    e.printStackTrace();
+            }
+            if (json.containsKey("@" + msg.getFrom().getUserName())) {
+                try {
+                    GameID = getGameIdByUsername("@" + msg.getFrom().getUserName());
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+            else {
+                GameID = UUID.randomUUID().toString();
+                json.put("@" + msg.getFrom().getUserName(), GameID);
+            }
             String tempUsername = "";
             for (int i = 0; i < msg.getText().length() + 1; ++i) {
                 if (msg.getText().length() == i) {
-                    json.put(tempUsername, GameID);
+                    if(!isUserOnQueue(tempUsername)) {
+                        json.put(tempUsername, GameID);
+                    }
                     break;
                 }
                 if(msg.getText().substring(i, i + 1).equals(" ")) {
-                    json.put(tempUsername, GameID);
+                    if(!isUserOnQueue(tempUsername)) {
+                        json.put(tempUsername, GameID);
+                    }
                     tempUsername = "";
                 }
                 else tempUsername += msg.getText().substring(i, i + 1);
             }
-            json.put("@" + msg.getFrom().getUserName(), GameID);
 
             File file = new File(UsersQueue);
             try {
@@ -165,6 +185,15 @@ public class DurakBot extends TelegramLongPollingBot {
             } catch (Exception e) {
                 e.printStackTrace();
             }
+        }
+    }
+
+    private boolean isUserOnQueue(String username) {
+        try {
+            return readJson(UsersQueue).containsKey(username);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
         }
     }
 
