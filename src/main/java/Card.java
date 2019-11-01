@@ -70,4 +70,9 @@ public class Card {
     String getStringCard() {
         return getLear() + getValue();
     }
+
+    boolean equals (Card card) {
+        if (lear.equals(card.getLear()) && value.equals(card.getValue())) return true;
+        return false;
+    }
 }

@@ -1,12 +1,17 @@
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboard;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.io.*;
@@ -110,12 +115,8 @@ public class DurakBot extends TelegramLongPollingBot {
                 }
                 message.setText("Вы успешно зарегестрировались в игре");
 
-                File file = new File(UsersPath);
                 try {
-                    FileWriter writer = new FileWriter(file);
-                    writer.write(json.toString());
-                    writer.flush();
-                    writer.close();
+                    WriteToFile(UsersPath, json.toString());
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
@@ -128,7 +129,7 @@ public class DurakBot extends TelegramLongPollingBot {
                 e.printStackTrace();
             }
         }
-        if (msg.getText().equals("/game")) { //TODO вывод колоды
+        if (msg.getText().equals("/game")) { //TODO вывод размера колоды
             SendMessage message = new SendMessage();
             message.setText("Введите никнеймы игроков, которых вы хотите пригласить, через пробел, например: @username1 @username2");
             message.setChatId(msg.getChatId());
@@ -174,12 +175,8 @@ public class DurakBot extends TelegramLongPollingBot {
                 else tempUsername += msg.getText().substring(i, i + 1);
             }
 
-            File file = new File(CurrentUsersPath);
             try {
-                FileWriter writer = new FileWriter(file);
-                writer.write(json.toString());
-                writer.flush();
-                writer.close();
+                WriteToFile(CurrentUsersPath, json.toString());
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -202,11 +199,7 @@ public class DurakBot extends TelegramLongPollingBot {
                 JSONObject configs = readJson(GameConfig);
                 configs.put("@" + msg.getFrom().getUserName(), msg.getText().substring(8));
 
-                File file = new File(GameConfig);
-                FileWriter writer = new FileWriter(file);
-                writer.write(configs.toString());
-                writer.flush();
-                writer.close();
+                WriteToFile(GameConfig, configs.toString());
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -222,19 +215,15 @@ public class DurakBot extends TelegramLongPollingBot {
             else {
                 pack = "36";
                 configs.put(username, "36");
-                File file = new File(GameConfig);
-                FileWriter writer = new FileWriter(file);
-                writer.write(configs.toString());
-                writer.flush();
-                writer.close();
+                WriteToFile(GameConfig, configs.toString());
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
         //раздать карты и вписать в файл
         List<String> users = GetUsersById(gameId);
-        JSONObject usersWithCrads = GiveCards(users, pack);
-        if (usersWithCrads == null) {
+        JSONObject usersWithCards = GiveCards(users, pack);
+        if (usersWithCards == null) {
             SendMessage message = new SendMessage();
             message.setText("Слишком много пользователей");
             try {
@@ -249,9 +238,81 @@ public class DurakBot extends TelegramLongPollingBot {
             }
         }
 
-        //TODO вынести запись в файл в отдельную функцию, записать в файл пользователе, нарисовать каждому клавиатуру
+        try {
+            WriteToFile(GamePath + gameId, usersWithCards.toString());
+            DrawKeybords(usersWithCards);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
     }
+
+    private void DrawKeybords(JSONObject usersWithCards) {
+        Object[] users = usersWithCards.entrySet().toArray();
+        JSONObject cardsLeft = (JSONObject) usersWithCards.get("CardsLeft");
+        boolean isTrumpCard = false;
+        Card trumpCard = null;
+        for (int i = 0; i < users.length; ++i) {
+            if(users[i].toString().charAt(0) == '@' && isTrumpCard) {
+                String user = users[i].toString().substring(0, users[i].toString().indexOf("="));
+                JSONParser jsonParser = new JSONParser();
+                JSONObject cards = new JSONObject();
+                try {
+                    cards = (JSONObject) jsonParser.parse(users[i].toString().substring(users[i].toString().indexOf("=") + 1));
+                } catch (ParseException e) {
+                    e.printStackTrace();
+                }
+
+                ReplyKeyboardMarkup keyboard = new ReplyKeyboardMarkup();
+                KeyboardRow row = new KeyboardRow();
+                for (int j = 0; j < cards.size(); ++j) {
+                    row.add(new KeyboardButton(cards.get(Integer.toString(j + 1)).toString()));
+                }
+                keyboard.setKeyboard(Collections.singletonList(row));
+                keyboard.setOneTimeKeyboard(false);
+                keyboard.setResizeKeyboard(true);
+                SendMessage msg = new SendMessage();
+                msg.setReplyMarkup(keyboard);
+                msg.setText("Участники:\r\n");
+                for (int j = 0; j < users.length; ++j) {
+                    if (users[j].toString().charAt(0) != '@') continue;
+                    msg.setText(msg.getText() + "\r\n" + users[j].toString().substring(0, users[j].toString().indexOf("=")) + ": ");
+                    if (users[j].toString().substring(0, users[j].toString().indexOf("=")).equals(user)) {
+                        for (int n = 0; n < cards.size(); ++n) {
+                            msg.setText(msg.getText() + " " + cards.get(Integer.toString(n + 1)).toString());
+                        }
+                    } else {
+                        try {
+                            for (int n = 0; n < ((JSONObject) jsonParser.parse(users[j].toString().substring(users[j].toString().indexOf("=") + 1))).size(); ++n) {
+                                msg.setText(msg.getText() + " \uD83C\uDCCF");
+                            }
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+                msg.setText(msg.getText() + "\r\n");
+                msg.setText(msg.getText() + "\r\nКолода: \uD83C\uDCCFx" + cardsLeft.size());
+                msg.setText(msg.getText() + " | Козырь:");
+                msg.setText(msg.getText() + trumpCard.getStringCard());
+                try {
+                    msg.setChatId(getUserChatId(user));
+                    execute(msg);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            } else if (!isTrumpCard && users[i].toString().substring(0, 9).equals("TrumpCard")) {
+                isTrumpCard = true;
+                if(users[i].toString().length() == 13) {
+                    trumpCard = new Card(users[i].toString().substring(users[i].toString().indexOf("=") + 1, users[i].toString().indexOf("=") + 2),
+                            users[i].toString().substring(users[i].toString().indexOf("=") + 2));
+                } else trumpCard = new Card(users[i].toString().substring(users[i].toString().indexOf("=") + 1, users[i].toString().indexOf("=") + 2));
+                i = -1;
+            }
+        }
+        //функция оповещения игрока о его ходе
+    }
+    //TODO выбрать кто ходит первым, вести игру
 
     private JSONObject GiveCards(List<String> users, String pack) {
         JSONObject usersWithCards = new JSONObject();
@@ -279,11 +340,122 @@ public class DurakBot extends TelegramLongPollingBot {
             JSONObject cards = new JSONObject();
             for (int i = 0; cards.size() < 6; ++i) {
                 Card temp = Card.getRandomCard(Short.parseShort(pack));
-                while (usedCards.contains(temp)) temp = Card.getRandomCard(Short.parseShort(pack));
+                for (int j = 0; j < usedCards.size(); ++j) {
+                    if(usedCards.get(j).equals(temp)) {
+                        j = 0;
+                        temp = Card.getRandomCard(Short.parseShort(pack));
+                    }
+                }
                 usedCards.add(temp);
                 cards.put((i + 1), temp.getStringCard());
             }
             returnValue.put(iter.next(), cards);
+        }
+        returnValue.put("CardsLeft", getLeftCards(usedCards, pack));
+        returnValue.put("CurrentTurn", getRandomUser(users));
+        return returnValue;
+    }
+
+    private String getRandomUser(List<String> users) {
+        int randomNumber = (int) (Math.random() * users.size());
+        return users.get(randomNumber);
+    }
+
+    private JSONObject getLeftCards(List<Card> usedCards, String pack) {
+        JSONObject returnValue = new JSONObject();
+        int counter = 0;
+        if (pack.equals("36")) {
+            for (int i = 0; i < 4; ++i) {
+                for (int j = 6; j < 15; ++j) {
+                    String lear = null;
+                    switch (i) {
+                        case 0:
+                            lear = "♦️";
+                            break;
+                        case 1:
+                            lear = "♥️";
+                            break;
+                        case 2:
+                            lear = "♣️";
+                            break;
+                        case 3:
+                            lear = "♠️";
+                            break;
+                    }
+                    String value = null;
+                    switch (j) {
+                        case 11:
+                            value = "J";
+                            break;
+                        case 12:
+                            value = "Q";
+                            break;
+                        case 13:
+                            value = "K";
+                            break;
+                        case 14:
+                            value = "A";
+                            break;
+                        default:
+                            value = Integer.toString(j);
+                    }
+                    Card temp = new Card(lear, value);
+                    boolean isUnique = true;
+                    for (int n = 0; n < usedCards.size(); ++n) {
+                        if(usedCards.get(n).equals(temp)) {
+                            isUnique = false;
+                            break;
+                        }
+                    }
+                    if (isUnique) returnValue.put(Integer.toString(++counter), temp.getStringCard());
+                }
+            }
+        } else {
+            for (int i = 0; i < 4; ++i) {
+                for (int j = 2; j < 15; ++j) {
+                    String lear = null;
+                    switch (i) {
+                        case 0:
+                            lear = "♦️";
+                            break;
+                        case 1:
+                            lear = "♥️";
+                            break;
+                        case 2:
+                            lear = "♣️";
+                            break;
+                        case 3:
+                            lear = "♠️";
+                            break;
+                    }
+                    String value = null;
+                    switch (j) {
+                        case 11:
+                            value = "J";
+                            break;
+                        case 12:
+                            value = "Q";
+                            break;
+                        case 13:
+                            value = "K";
+                            break;
+                        case 14:
+                            value = "A";
+                            break;
+                        default:
+                            value = Integer.toString(j);
+                    }
+                    Card temp = new Card(lear, value);
+                    boolean isUnique = true;
+                    for (int n = 0; n < usedCards.size(); ++n) {
+                        if(usedCards.get(n).equals(temp)) {
+                            isUnique = false;
+                            break;
+                        }
+                    }
+                    if (isUnique) returnValue.put(Integer.toString(++counter), temp.getStringCard());
+                }
+            }
         }
         return returnValue;
     }
@@ -314,6 +486,14 @@ public class DurakBot extends TelegramLongPollingBot {
             e.printStackTrace();
             return false;
         }
+    }
+
+    private void WriteToFile(String filename, String data) throws IOException {
+        File file = new File(filename);
+        FileWriter writer = new FileWriter(file);
+        writer.write(data);
+        writer.flush();
+        writer.close();
     }
 
     private void SendInvitation(JSONObject users, String FromUserName) throws Exception {
